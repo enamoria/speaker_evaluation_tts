@@ -22,7 +22,7 @@ from tqdm import tqdm
 from itertools import repeat
 from multiprocessing import Pool, cpu_count
 
-from utils import read_dictionary
+from pyEval.utils import read_dictionary, get_data
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -31,29 +31,9 @@ cpu_rate = 0.8
 # frame_length = 25  # ms
 # hop_length = 10  # ms
 
-is_toy = True
+is_toy = False
 
 speaker = "doanngocle_1" if not is_toy else "doanngocle_1_toy"
-
-
-def get_data(path, is_toy=False):
-    if is_toy:
-        textpath = os.path.join(path, 'txt/text_toy')
-    else:
-        textpath = os.path.join(path, 'txt/text')
-
-    logging.info("Reading data from {}".format(textpath))
-    wavs = []
-    sr = None
-
-    with open(textpath, 'r') as f:
-        for line in tqdm(f.readlines()):
-            filename, text = line.strip().split("|")
-            y_temp, sr = lbr.load(os.path.join(os.path.join(path, 'wav'), filename + ".wav"), sr=None, dtype='double')
-
-            wavs.append([filename, text, y_temp])
-
-    return wavs, sr
 
 
 def _calculate_mean_sd_energy(raw_wav, n_fft, n_hop):
@@ -176,6 +156,14 @@ def calculate_mean_utt_length(raw_wavs, sr):
 
 
 def draw_plot(energy_data=None, f0_data=None, speaking_rate_data=None, utt_length=None):
+    """
+        Draw plot of whichever-provided data
+    :param energy_data:
+    :param f0_data:
+    :param speaking_rate_data:
+    :param utt_length:
+    :return:
+    """
     logger_plot = logging.getLogger("eval")
     # energy
 
@@ -186,42 +174,56 @@ def draw_plot(energy_data=None, f0_data=None, speaking_rate_data=None, utt_lengt
         logger_plot.info("Presenting plot ...")
 
         if energy_data:
-            xxx = [xx[0] for xx in energy_data]
-            yyy = [xx[1] for xx in energy_data]
+            yyy = [xx[0] for xx in energy_data]  # mean
+            xxx = [xx[1] for xx in energy_data]  # var
 
             fig, axes = plt.subplots(1, 3, sharey=True)
             fig.suptitle("Energy data")
 
             axes[0].scatter(xxx, yyy)
+            axes[0].set_xlabel("Standard deviation")
+            axes[0].set_ylabel("Mean")
+
             axes[1].boxplot(xxx)
+            axes[1].set_ylabel("Mean")
+
             axes[2].boxplot(yyy)
+            axes[2].set_ylabel("SD")
 
         if f0_data:
             fig, axes = plt.subplots(1, 2)
             fig.suptitle("f0 data")
 
             axes[0].hist(f0_data, 50)
+            axes[0].set_xlabel("f0")
+
             axes[1].boxplot(f0_data)
+            axes[1].set_ylabel("f0")
 
         if speaking_rate_data:
             fig, axes = plt.subplots(1, 2)
             fig.suptitle("speaking_rate: how fast she/he is doing")
 
             axes[0].hist(speaking_rate_data, 50)
+            axes[0].set_xlabel("speaking rate (phonemes/sec)")
+
             axes[1].boxplot(speaking_rate_data)
+            axes[1].set_ylabel("speaking_rate")
 
         if utt_length:
             fig, axes = plt.subplots(1, 2)
             fig.suptitle("length of utterance (sec)")
 
             axes[0].hist(utt_length, 50)
+            axes[0].set_xlabel("utt length (sec)")
+
             axes[1].boxplot(utt_length)
-            pass
+            axes[1].set_ylabel("utt length")
 
     plt.show()
 
 
-def _calculate(data, sr, speaker, output_path, dictionary_path, frame_length, hop_length, recalculate):
+def _calculate(data, sr, speaker, output_path, dictionary_path, frame_length, hop_length):
     """
     Calculate some measurements for speaker evaluation (and his/her synthesized voice)
     These below attributes will be taken into account:
@@ -304,7 +306,7 @@ def calculate(speaker, input_path, output_path="features", dictionary_path="vn.d
             return features
     else:
         data, sr = get_data(os.path.join(input_path, speaker))
-        features = _calculate(data, sr, speaker, output_path, dictionary_path, frame_length, hop_length, recalculate)
+        features = _calculate(data, sr, speaker, output_path, os.path.join(os.path.dirname(os.path.abspath(__file__)), dictionary_path), frame_length, hop_length, recalculate)
 
     return features
 

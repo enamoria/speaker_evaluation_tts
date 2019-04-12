@@ -8,6 +8,7 @@
 import matplotlib.pyplot as plt
 import logging
 import numpy as np
+import os
 
 
 def read_dictionary(dict_path):
@@ -67,23 +68,45 @@ def label_subplot_with_a_big_subplot(_fig, xlabel=None, ylabel=None):
         ax_big.set_ylabel(ylabel)
 
     return ax_big
-if __name__ == "__main__":
-    #First create some toy data:
-    x = np.linspace(0, 2*np.pi, 400)
-    y = np.sin(x**2)
 
-    #Creates just a figure and only one subplot
+
+def get_data(path, is_toy=False):
+    if is_toy:
+        textpath = os.path.join(path, 'txt/text_toy')
+    else:
+        textpath = os.path.join(path, 'txt/text')
+
+    logging.info("Reading data from {}".format(textpath))
+    wavs = []
+    sr = None
+
+    with open(textpath, 'r') as f:
+        for line in tqdm(f.readlines()):
+            filename, text = line.strip().split("|")
+            y_temp, sr = lbr.load(os.path.join(os.path.join(path, 'wav'), filename + ".wav"), sr=None, dtype='double')
+
+            wavs.append([filename, text, y_temp])
+
+    return wavs, sr
+
+
+if __name__ == "__main__":
+    # First create some toy data:
+    x = np.linspace(0, 2 * np.pi, 400)
+    y = np.sin(x ** 2)
+
+    # Creates just a figure and only one subplot
     fig, ax = plt.subplots()
     ax.plot(x, y)
     ax.set_title('Simple plot')
 
-    #Creates two subplots and unpacks the output array immediately
+    # Creates two subplots and unpacks the output array immediately
     f, (ax1, ax2) = plt.subplots(1, 2, sharey=True)
     ax1.plot(x, y)
     ax1.set_title('Sharing Y axis')
     ax2.scatter(x, y)
     #
-    #Creates four polar axes, and accesses them through the returned array
+    # Creates four polar axes, and accesses them through the returned array
     fig, axes = plt.subplots(2, 2, subplot_kw=dict(polar=True))
     axes[0, 0].plot(x, y)
     axes[1, 1].scatter(x, y)
@@ -105,4 +128,3 @@ if __name__ == "__main__":
     # fig, ax=plt.subplots(num=10, clear=True)
 
     plt.show()
-
