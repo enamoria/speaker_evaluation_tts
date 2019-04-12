@@ -5,26 +5,24 @@
     @brief: Пролетарии всех стран, соединяйтесь!
 """
 
-import os
-import sys
-import time
 import logging
-import scipy
-import pysptk
-import subprocess
+import os
 import pickle
+import subprocess
+import scipy
 import parmap
 
-import pyworld as pw
 import librosa as lbr
 import matplotlib.pyplot as plt
 import numpy as np
+import pyworld as pw
 
-from tqdm import tqdm
-from utils import read_dictionary
-from multiprocessing import Pool, cpu_count
 from scipy.stats import describe
+from tqdm import tqdm
 from itertools import repeat
+from multiprocessing import Pool, cpu_count
+
+from utils import read_dictionary
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
@@ -33,12 +31,12 @@ cpu_rate = 0.8
 # frame_length = 25  # ms
 # hop_length = 10  # ms
 
-is_toy = False
+is_toy = True
 
-speaker = "doanngocle_1"
+speaker = "doanngocle_1" if not is_toy else "doanngocle_1_toy"
 
 
-def get_data(path):
+def get_data(path, is_toy=False):
     if is_toy:
         textpath = os.path.join(path, 'txt/text_toy')
     else:
@@ -109,7 +107,6 @@ def calculate_f0(raw_wavs, sr, frame_period=5, parallel=True):
     else:
         n_worker = int(cpu_count() * cpu_rate)
         logging.info("{}% resources ({} cpu core(s)) will be used for f0 calculation".format(cpu_rate * 100, n_worker))
-        pool = Pool(n_worker)
         # f0s = pool.starmap(_calculate_f0, zip(raw_wavs, repeat(sr), repeat(frame_period)))
         f0s = parmap.starmap(_calculate_f0, list(zip(raw_wavs, repeat(sr), repeat(frame_period))), pm_processes=n_worker, pm_pbar=True)
 
@@ -154,7 +151,6 @@ def calculate_speaking_rate(raw_wavs, texts, sr, dictionary):
     n_worker = int(cpu_count() * cpu_rate)
     logging.info("{}% resources ({} cpu core(s)) will be used for speaking_rate calculation".format(cpu_rate * 100, n_worker))
 
-    pool = Pool(n_worker)
     # rates = pool.starmap(_calculate_speaking_rate, zip(raw_wavs, texts, repeat(sr), repeat(dictionary)))
     rates = parmap.starmap(_calculate_speaking_rate, list(zip(raw_wavs, texts, repeat(sr), repeat(dictionary))), pm_processes=n_worker, pm_pbar=True)
 
@@ -174,22 +170,20 @@ def _calculate_mean_utt_length(raw_wav, sr):
 def calculate_mean_utt_length(raw_wavs, sr):
     n_worker = int(cpu_count() * cpu_rate)
     logging.info("{}% resources ({} cpu core(s)) will be used for mean utterance length calculation".format(cpu_rate * 100, n_worker))
-    pool = Pool(n_worker)
 
     # return pool.starmap(_calculate_mean_utt_length, zip(raw_wavs, repeat(sr)))
     return parmap.starmap(_calculate_mean_utt_length, list(zip(raw_wavs, repeat(sr))), pm_processes=n_worker, pm_pbar=True)
-    # return [_calculate_mean_utt_length(raw_wav, sr) for raw_wav in raw_wavs]
 
 
 def draw_plot(energy_data=None, f0_data=None, speaking_rate_data=None, utt_length=None):
-    logger_eval = logging.getLogger("eval")
+    logger_plot = logging.getLogger("eval")
     # energy
 
     if not energy_data and not f0_data and not speaking_rate_data and not utt_length:
-        logger_eval.critical("None of kwargs is specified. Nothing to plot")
+        logger_plot.critical("None of kwargs is specified. Nothing to plot")
         return -1
     else:
-        logger_eval.info("Presenting plot ...")
+        logger_plot.info("Presenting plot ...")
 
         if energy_data:
             xxx = [xx[0] for xx in energy_data]
@@ -206,7 +200,7 @@ def draw_plot(energy_data=None, f0_data=None, speaking_rate_data=None, utt_lengt
             fig, axes = plt.subplots(1, 2)
             fig.suptitle("f0 data")
 
-            axes[0].hist(f0_data, 10)
+            axes[0].hist(f0_data, 50)
             axes[1].boxplot(f0_data)
 
         if speaking_rate_data:
@@ -227,7 +221,7 @@ def draw_plot(energy_data=None, f0_data=None, speaking_rate_data=None, utt_lengt
     plt.show()
 
 
-def calculate(data, sr, speaker, dictionary_path="vn.dict", output_path="features", frame_length=25, hop_length=10):
+def _calculate(data, sr, speaker, output_path, dictionary_path, frame_length, hop_length, recalculate):
     """
     Calculate some measurements for speaker evaluation (and his/her synthesized voice)
     These below attributes will be taken into account:
@@ -246,6 +240,8 @@ def calculate(data, sr, speaker, dictionary_path="vn.dict", output_path="feature
     :param hop_length: stride (sec)
     :return:
     """
+    feature_output = os.path.join(output_path, speaker) + ".pkl"
+
     dictionary = read_dictionary(dictionary_path)
 
     filenames = []
@@ -278,19 +274,46 @@ def calculate(data, sr, speaker, dictionary_path="vn.dict", output_path="feature
         'utt_length': utt_length
     }
 
-    feature_output = os.path.join(output_path, speaker)
     subprocess.call(['mkdir', '-p', output_path])
 
-    with open(feature_output + ".pkl", "wb") as f:
+    with open(feature_output, "wb") as f:
         pickle.dump(features, f)
 
     return features
 
 
-if __name__ == "__main__":
-    data, sr = get_data(os.path.join("/data/data/tts/", speaker))
+def calculate(speaker, input_path, output_path="features", dictionary_path="vn.dict", frame_length=25, hop_length=10, recalculate=False):
+    """
+        Read data and pass to _calculate
+    :param input_path:
+    :param output_path:
+    :param dictionary_path:
+    :param frame_length:
+    :param hop_length:
+    :param recalculate:
+    :return:
+    """
+    feature_output = os.path.join(output_path, speaker) + ".pkl"
 
-    features = calculate(data, sr, speaker)
+    if os.path.exists(feature_output) and not recalculate:
+        logging.info("Found a pre-calculation of feature for speaker `{}` in `{}`.".format(speaker, feature_output))
+        logging.info("Either delete the file or pass `recaculate=True` to this function to re-calculate feature")
+
+        with open(feature_output, "rb") as f:
+            features = pickle.load(f)
+            return features
+    else:
+        data, sr = get_data(os.path.join(input_path, speaker))
+        features = _calculate(data, sr, speaker, output_path, dictionary_path, frame_length, hop_length, recalculate)
+
+    return features
+
+
+if __name__ == "__main__":
+    # data, sr = get_data(os.path.join("/data/data/tts/", speaker))
+
+    # features = _calculate(data, sr, speaker)
+    features = calculate(speaker, input_path="/data/data/tts/")
 
     energies, sum_f0s, speaking_rates, utt_length = features['energy'], features['f0'], features['speaking_rates'], features['utt_length']
 
