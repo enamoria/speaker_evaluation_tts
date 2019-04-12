@@ -26,6 +26,9 @@ setup(
     description="Speaker evaluation for TTS corpus",
     license="BSD",
     url="https://github.com/enamoria/speaker_evaluation_tts",
+    install_requires=[
+          'tqdm', 'scipy', 'numpy', 'pyworld'
+      ],
     packages=['pyEval'],
     include_package_data=True
 )
