@@ -44,9 +44,12 @@ def _calculate_mean_sd_energy(raw_wav, n_fft, n_hop):
     """
     energy = []
 
-    for count, i in enumerate(range(0, len(raw_wav) - n_fft, n_hop)):
-        # temp = np.multiply(raw_wav_windowed, raw_wav[i: i + n_fft])
-        energy.append(np.sqrt(np.sum(np.square(raw_wav[i: i + n_fft]))))
+    # for count, i in enumerate(range(0, len(raw_wav) - n_fft, n_hop)):
+    #     # temp = np.multiply(raw_wav_windowed, raw_wav[i: i + n_fft])
+    #     energy.append(np.sqrt(np.sum(np.square(raw_wav[i: i + n_fft]))))
+    stft = lbr.core.stft(raw_wav, n_fft, n_hop)
+    for count, i in enumerate(range(len(stft))):
+        energy.append(np.sqrt(np.sum(np.square(stft[i])) / n_fft))
 
     _energy = np.sum(energy) / len(energy)
     temp = scipy.stats.describe(energy)
